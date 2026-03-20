@@ -1,15 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+import os
 
 from backend.database import engine, Base
 from backend.routes import auth, wallet, postback, admin
 
-app = FastAPI()
+# 🔐 Load environment variables
+load_dotenv()
 
-# ✅ CORS
+app = FastAPI(
+    title="CPA Backend",
+    description="Secure CPA Tracking System",
+    version="1.0.0"
+)
+
+# ✅ CORS (⚠️ restrict in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # change later to frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

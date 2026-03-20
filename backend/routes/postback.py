@@ -3,11 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
 from backend.models import User, Transaction, Click
 from sqlalchemy import select
+import os
 
 router = APIRouter()
 
-# 🔐 Secret key (move to .env later)
-POSTBACK_SECRET = "super_secret_key"
+# 🔐 Load secret from environment
+POSTBACK_SECRET = os.getenv("POSTBACK_SECRET")
 
 # 🗄️ DB Dependency
 async def get_db():
@@ -26,7 +27,7 @@ async def postback(
 ):
 
     # 🔐 1. Validate secret
-    if secret != POSTBACK_SECRET:
+    if not POSTBACK_SECRET or secret != POSTBACK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret")
 
     # 🧹 2. Clean tx_id
@@ -45,7 +46,7 @@ async def postback(
     if existing_tx:
         return {"status": "duplicate ignored"}
 
-    # 🔥 5. VERIFY sub_id FROM DATABASE (MOST IMPORTANT)
+    # 🔥 5. Verify sub_id from DB
     result = await db.execute(
         select(Click).where(Click.sub_id == sub_id)
     )

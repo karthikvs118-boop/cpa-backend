@@ -5,11 +5,12 @@ from backend.models import User, Withdrawal, Click
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
+import os
 
 router = APIRouter()
 
-# 🔐 Config (must match auth.py)
-SECRET_KEY = "your_secret_key"
+# 🔐 Load secret from environment
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 # 🔐 Security
@@ -40,12 +41,12 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-# 🔥 Generate strong sub_id (FULL UUID)
+# 🔥 Generate strong sub_id
 def generate_sub_id(user_id: int):
     return f"{user_id}_{uuid.uuid4().hex}"
 
 
-# 🔥 Generate CPA tracking link (SECURE VERSION)
+# 🔥 Generate CPA tracking link
 @router.get("/generate-link")
 async def generate_link(
     user_id: int = Depends(get_current_user),
@@ -53,7 +54,7 @@ async def generate_link(
 ):
     sub_id = generate_sub_id(user_id)
 
-    # 🔥 Save click in DB (IMPORTANT)
+    # 🔥 Save click in DB
     click = Click(
         user_id=user_id,
         sub_id=sub_id
