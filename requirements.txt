@@ -8,3 +8,4 @@ bcrypt
 pyjwt
 passlib
 python-jose
+email-validator
