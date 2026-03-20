@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 # 🔐 Config
-SECRET_KEY = "your_secret_key"
+SECRET_KEY = "SECRET_KEY"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
