@@ -6,34 +6,37 @@ from sqlalchemy import select
 
 router = APIRouter()
 
+# 🔐 Secret key (move to .env later)
 POSTBACK_SECRET = "super_secret_key"
 
-# DB Dependency
+# 🗄️ DB Dependency
 async def get_db():
     async with SessionLocal() as session:
         yield session
 
+
+# 🔌 CPA Postback Endpoint
 @router.get("/postback")
 async def postback(
-    user_id: int,
+    sub_id: str,
     amount: float,
     secret: str,
     tx_id: str,
     db: AsyncSession = Depends(get_db)
 ):
 
-    # 🔐 Validate secret
+    # 🔐 1. Validate secret
     if secret != POSTBACK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret")
 
-    # 🧹 Clean tx_id
+    # 🧹 2. Clean tx_id
     tx_id = tx_id.strip()
 
-    # 💰 Validate amount
+    # 💰 3. Validate amount
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
-    # 🔁 Prevent duplicate
+    # 🔁 4. Prevent duplicate transactions
     result = await db.execute(
         select(Transaction).where(Transaction.tx_id == tx_id)
     )
@@ -42,15 +45,21 @@ async def postback(
     if existing_tx:
         return {"status": "duplicate ignored"}
 
-    # 🔍 Check user
+    # 🔍 5. Convert sub_id → user_id
+    try:
+        user_id = int(sub_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid sub_id")
+
+    # 🔍 6. Find user
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 💰 Credit balance
+    # 💰 7. Credit user balance
     user.balance += amount
 
-    # 🧾 Save transaction
+    # 🧾 8. Save transaction
     txn = Transaction(
         user_id=user_id,
         amount=amount,
@@ -60,9 +69,11 @@ async def postback(
 
     db.add(txn)
 
+    # 💾 9. Commit changes
     await db.commit()
     await db.refresh(user)
 
+    # ✅ 10. Response
     return {
         "status": "success",
         "credited": amount,
