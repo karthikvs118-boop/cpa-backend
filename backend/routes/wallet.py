@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
-from backend.models import User, Withdrawal
+from backend.models import User, Withdrawal, Click
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
@@ -40,21 +40,30 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-# 🔥 NEW: Generate secure sub_id
+# 🔥 Generate strong sub_id (FULL UUID)
 def generate_sub_id(user_id: int):
-    return f"{user_id}_{uuid.uuid4().hex[:6]}"
+    return f"{user_id}_{uuid.uuid4().hex}"
 
 
-# 🔥 NEW: Generate CPA tracking link
+# 🔥 Generate CPA tracking link (SECURE VERSION)
 @router.get("/generate-link")
 async def generate_link(
-    user_id: int = Depends(get_current_user)
+    user_id: int = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     sub_id = generate_sub_id(user_id)
 
-    # 🔗 Replace with your real CPA link later
-    base_url = "https://example.cpagrip.com/offer123"
+    # 🔥 Save click in DB (IMPORTANT)
+    click = Click(
+        user_id=user_id,
+        sub_id=sub_id
+    )
 
+    db.add(click)
+    await db.commit()
+
+    # 🔗 Replace with your real CPA link
+    base_url = "https://example.cpagrip.com/offer123"
     offer_link = f"{base_url}?subid={sub_id}"
 
     return {
@@ -74,9 +83,7 @@ async def get_balance(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return {
-        "balance": user.balance
-    }
+    return {"balance": user.balance}
 
 
 # 💸 Request withdrawal
@@ -91,7 +98,6 @@ async def request_withdrawal(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 💰 Validate amount
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
@@ -101,10 +107,8 @@ async def request_withdrawal(
     if user.balance < amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    # 💰 Deduct balance
     user.balance -= amount
 
-    # 🧾 Create withdrawal record
     withdrawal = Withdrawal(
         user_id=user_id,
         amount=amount,

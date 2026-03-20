@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
-from backend.models import User, Transaction
+from backend.models import User, Transaction, Click
 from sqlalchemy import select
 
 router = APIRouter()
@@ -45,18 +45,23 @@ async def postback(
     if existing_tx:
         return {"status": "duplicate ignored"}
 
-    # 🔍 5. Convert sub_id → user_id
-    try:
-        user_id = int(sub_id)
-    except:
-        raise HTTPException(status_code=400, detail="Invalid sub_id")
+    # 🔥 5. VERIFY sub_id FROM DATABASE (MOST IMPORTANT)
+    result = await db.execute(
+        select(Click).where(Click.sub_id == sub_id)
+    )
+    click = result.scalar_one_or_none()
+
+    if not click:
+        raise HTTPException(status_code=400, detail="Invalid or fake sub_id")
+
+    user_id = click.user_id
 
     # 🔍 6. Find user
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 💰 7. Credit user balance
+    # 💰 7. Credit balance
     user.balance += amount
 
     # 🧾 8. Save transaction
@@ -69,7 +74,7 @@ async def postback(
 
     db.add(txn)
 
-    # 💾 9. Commit changes
+    # 💾 9. Commit
     await db.commit()
     await db.refresh(user)
 
