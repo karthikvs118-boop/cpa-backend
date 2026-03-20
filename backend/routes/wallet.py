@@ -4,10 +4,11 @@ from backend.database import SessionLocal
 from backend.models import User, Withdrawal
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import uuid
 
 router = APIRouter()
 
-# 🔐 Config (MUST match auth.py exactly)
+# 🔐 Config (must match auth.py)
 SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 
@@ -19,29 +20,50 @@ async def get_db():
     async with SessionLocal() as session:
         yield session
 
+
 # 🔐 Get current user from token
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     token = credentials.credentials
-    print("TOKEN RECEIVED:", token)   # 🔍 DEBUG
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print("PAYLOAD:", payload)    # 🔍 DEBUG
-
         user_id = payload.get("user_id")
 
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        return user_id
+        return int(user_id)
 
-    except Exception as e:
-        print("ERROR:", str(e))       # 🔍 DEBUG
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-# 💰 Get balance (protected)
+
+# 🔥 NEW: Generate secure sub_id
+def generate_sub_id(user_id: int):
+    return f"{user_id}_{uuid.uuid4().hex[:6]}"
+
+
+# 🔥 NEW: Generate CPA tracking link
+@router.get("/generate-link")
+async def generate_link(
+    user_id: int = Depends(get_current_user)
+):
+    sub_id = generate_sub_id(user_id)
+
+    # 🔗 Replace with your real CPA link later
+    base_url = "https://example.cpagrip.com/offer123"
+
+    offer_link = f"{base_url}?subid={sub_id}"
+
+    return {
+        "sub_id": sub_id,
+        "offer_link": offer_link
+    }
+
+
+# 💰 Get balance
 @router.get("/balance")
 async def get_balance(
     user_id: int = Depends(get_current_user),
@@ -52,9 +74,12 @@ async def get_balance(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return {"balance": user.balance}
+    return {
+        "balance": user.balance
+    }
 
-# 💸 Request withdrawal (protected)
+
+# 💸 Request withdrawal
 @router.post("/withdraw")
 async def request_withdrawal(
     amount: float,
@@ -66,18 +91,20 @@ async def request_withdrawal(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # minimum withdrawal
+    # 💰 Validate amount
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid amount")
+
     if amount < 100:
         raise HTTPException(status_code=400, detail="Minimum withdrawal is ₹100")
 
-    # balance check
     if user.balance < amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    # deduct balance
+    # 💰 Deduct balance
     user.balance -= amount
 
-    # create withdrawal
+    # 🧾 Create withdrawal record
     withdrawal = Withdrawal(
         user_id=user_id,
         amount=amount,
@@ -85,10 +112,17 @@ async def request_withdrawal(
     )
 
     db.add(withdrawal)
+
     await db.commit()
+    await db.refresh(user)
 
-    return {"message": "Withdrawal request submitted"}
+    return {
+        "message": "Withdrawal request submitted",
+        "remaining_balance": user.balance
+    }
 
+
+# 👤 Get user profile
 @router.get("/me")
 async def get_me(
     user_id: int = Depends(get_current_user),
