@@ -11,6 +11,7 @@ router = APIRouter()
 
 # 🔐 Load secret from environment
 SECRET_KEY = os.getenv("SECRET_KEY")
+print("SECRET_KEY LOADED:", SECRET_KEY)
 ALGORITHM = "HS256"
 
 # 🔐 Security

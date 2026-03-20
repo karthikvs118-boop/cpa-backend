@@ -13,6 +13,7 @@ router = APIRouter()
 
 # 🔐 Config
 SECRET_KEY = os.getenv("SECRET_KEY")
+print("SECRET_KEY LOADED:", SECRET_KEY)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
