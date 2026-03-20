@@ -7,11 +7,12 @@ from pydantic import BaseModel, EmailStr
 from passlib.hash import pbkdf2_sha256
 from jose import jwt
 from datetime import datetime, timedelta
+import os
 
 router = APIRouter()
 
 # 🔐 Config
-SECRET_KEY = "SECRET_KEY"
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
