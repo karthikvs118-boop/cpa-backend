@@ -1,3 +1,7 @@
+import os
+print("Main SECRET_KEY:",
+os.getenv("SECRET_KEY"))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
