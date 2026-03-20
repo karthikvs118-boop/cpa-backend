@@ -7,3 +7,4 @@ httpx
 bcrypt
 pyjwt
 passlib
+python-jose
