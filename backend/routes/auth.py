@@ -13,23 +13,31 @@ router = APIRouter()
 
 # 🔐 Config
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise Exception("SECRET_KEY NOT SET ❌")
+
 print("SECRET_KEY LOADED:", SECRET_KEY)
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+
 
 # 📦 Schemas
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
 
 # 🗄️ DB Dependency
 async def get_db():
     async with SessionLocal() as session:
         yield session
+
 
 # 📝 REGISTER
 @router.post("/register")
@@ -38,11 +46,10 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     email = user.email.strip().lower()
     password = user.password.strip()
 
-    # basic validation
     if not password:
         raise HTTPException(status_code=400, detail="Password cannot be empty")
 
-    # check if user already exists
+    # check if user exists
     result = await db.execute(
         select(User).where(User.email == email)
     )
@@ -64,6 +71,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 
     return {"message": "User registered successfully"}
 
+
 # 🔐 LOGIN
 @router.post("/login")
 async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
@@ -81,15 +89,12 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="User not found")
 
     # verify password
-    valid = pbkdf2_sha256.verify(password, db_user.password)
-
-    if not valid:
+    if not pbkdf2_sha256.verify(password, db_user.password):
         raise HTTPException(status_code=400, detail="Wrong password")
 
-    # create JWT token
+    # 🔥 CREATE TOKEN (CLEAN PAYLOAD)
     payload = {
-        "user_id": db_user.id,
-        "email": db_user.email,
+        "user_id": int(db_user.id),   # 🔥 MUST be int
         "exp": datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     }
 

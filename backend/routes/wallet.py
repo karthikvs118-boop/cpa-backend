@@ -9,9 +9,13 @@ import os
 
 router = APIRouter()
 
-# 🔐 Load secret from environment
+# 🔐 Config
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise Exception("SECRET_KEY NOT SET ❌")
+
 print("SECRET_KEY LOADED:", SECRET_KEY)
+
 ALGORITHM = "HS256"
 
 # 🔐 Security
@@ -31,14 +35,19 @@ def get_current_user(
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        # 🔍 DEBUG (VERY IMPORTANT)
+        print("DECODED PAYLOAD:", payload)
+
         user_id = payload.get("user_id")
 
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
 
         return int(user_id)
 
-    except JWTError:
+    except JWTError as e:
+        print("JWT ERROR:", str(e))  # 🔍 DEBUG
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
@@ -55,7 +64,6 @@ async def generate_link(
 ):
     sub_id = generate_sub_id(user_id)
 
-    # 🔥 Save click in DB
     click = Click(
         user_id=user_id,
         sub_id=sub_id
@@ -64,7 +72,6 @@ async def generate_link(
     db.add(click)
     await db.commit()
 
-    # 🔗 Replace with your real CPA link
     base_url = "https://example.cpagrip.com/offer123"
     offer_link = f"{base_url}?subid={sub_id}"
 
