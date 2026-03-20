@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import SessionLocal
-from models import User, Transaction
+from backend.database import SessionLocal
+from backend.models import User, Transaction
 
 router = APIRouter()
 

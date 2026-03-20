@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from database import SessionLocal
-from models import User
+from backend.database import SessionLocal
+from backend.models import User
 from pydantic import BaseModel, EmailStr
 from passlib.hash import pbkdf2_sha256
 from jose import jwt
