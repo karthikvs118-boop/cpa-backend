@@ -1,6 +1,4 @@
-import os
-print("Main SECRET_KEY:",
-os.getenv("SECRET_KEY"))
+
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +8,11 @@ import os
 from backend.database import engine, Base
 from backend.routes import auth, wallet, postback, admin
 
+# 🔥 NEW (rate limiting)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
+
 # 🔐 Load environment variables
 load_dotenv()
 
@@ -18,6 +21,12 @@ app = FastAPI(
     description="Secure CPA Tracking System",
     version="1.0.0"
 )
+
+# 🔥 ADD THIS (IMPORTANT)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
 
 # ✅ CORS (⚠️ restrict in production)
 app.add_middleware(

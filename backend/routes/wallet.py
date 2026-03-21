@@ -4,7 +4,9 @@ from backend.database import SessionLocal
 from backend.models import User, Withdrawal, Click
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy import select
+from sqlalchemy import select, func
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import uuid
 import os
 
@@ -19,6 +21,9 @@ ALGORITHM = "HS256"
 
 # 🔐 Security
 security = HTTPBearer()
+
+# 🔥 Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # 🗄️ DB Dependency
 async def get_db():
@@ -50,8 +55,9 @@ def generate_sub_id(user_id: int):
     return f"{user_id}_{uuid.uuid4().hex}"
 
 
-# 🔥 Generate CPA tracking link (ANTI-FRAUD ENABLED)
+# 🔥 Generate CPA tracking link (RATE LIMITED + ANTI-FRAUD)
 @router.get("/generate-link")
+@limiter.limit("10/minute")
 async def generate_link(
     request: Request,
     user_id: int = Depends(get_current_user),
@@ -62,20 +68,21 @@ async def generate_link(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 🚫 Blocked user check
+    # 🚫 Blocked user
     if user.is_blocked:
         raise HTTPException(status_code=403, detail="User is blocked")
 
     # 🔐 Get IP
     ip = request.client.host
 
-    # 🚫 Click spam protection (max 100 clicks)
+    # 🚀 FAST click count (NO full load)
     result = await db.execute(
-        select(Click).where(Click.user_id == user_id)
+        select(func.count()).select_from(Click).where(Click.user_id == user_id)
     )
-    clicks = result.scalars().all()
+    click_count = result.scalar()
 
-    if len(clicks) >= 100:
+    # 🚫 Click spam protection
+    if click_count >= 100:
         raise HTTPException(status_code=403, detail="Too many clicks")
 
     # 🔥 Generate sub_id

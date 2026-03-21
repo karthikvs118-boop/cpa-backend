@@ -2,13 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
 from backend.models import User, Transaction, Click
-from sqlalchemy import select
+from sqlalchemy import select, func
+from datetime import datetime, timedelta
 import os
 
 router = APIRouter()
 
 # 🔐 Load secret
 POSTBACK_SECRET = os.getenv("POSTBACK_SECRET")
+if not POSTBACK_SECRET:
+    raise Exception("POSTBACK_SECRET NOT SET ❌")
 
 
 # 🗄️ DB Dependency
@@ -28,21 +31,24 @@ async def postback(
 ):
 
     # 🔐 1. Validate secret
-    if not POSTBACK_SECRET or secret != POSTBACK_SECRET:
+    if secret != POSTBACK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret")
 
     # 🧹 2. Clean tx_id
     tx_id = tx_id.strip()
 
-    # 💰 3. Validate amount
+    # 🔐 3. Validate tx_id
+    if len(tx_id) < 5:
+        raise HTTPException(status_code=400, detail="Invalid tx_id")
+
+    # 💰 4. Validate amount
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
-    # 🚫 Suspicious high payout protection
-    if amount > 1000:
+    if amount > 500:
         raise HTTPException(status_code=400, detail="Suspicious amount")
 
-    # 🔁 4. Prevent duplicate transactions
+    # 🔁 5. Prevent duplicate transactions
     result = await db.execute(
         select(Transaction).where(Transaction.tx_id == tx_id)
     )
@@ -51,7 +57,7 @@ async def postback(
     if existing_tx:
         return {"status": "duplicate ignored"}
 
-    # 🔥 5. Verify sub_id
+    # 🔥 6. Verify sub_id
     result = await db.execute(
         select(Click).where(Click.sub_id == sub_id)
     )
@@ -60,21 +66,25 @@ async def postback(
     if not click:
         raise HTTPException(status_code=400, detail="Invalid or fake sub_id")
 
+    # 🚫 7. Expired click (24h)
+    if click.created_at < datetime.utcnow() - timedelta(hours=24):
+        raise HTTPException(status_code=400, detail="Expired click")
+
     user_id = click.user_id
 
-    # 🔍 6. Find user
+    # 🔍 8. Find user
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 🚫 Blocked user check
+    # 🚫 9. Blocked user
     if user.is_blocked:
         raise HTTPException(status_code=403, detail="User is blocked")
 
-    # 💰 7. Credit balance
+    # 💰 10. Credit balance
     user.balance += amount
 
-    # 🧾 8. Save transaction
+    # 🧾 11. Save transaction
     txn = Transaction(
         user_id=user_id,
         amount=amount,
@@ -84,21 +94,41 @@ async def postback(
 
     db.add(txn)
 
-    # 💾 9. Commit
+    # 💾 12. Commit
     await db.commit()
     await db.refresh(user)
 
-    # 🔥 10. AUTO FRAUD DETECTION (block if too many conversions)
+    # 🔥 13. TOTAL FRAUD CHECK (lifetime)
     result = await db.execute(
-        select(Transaction).where(Transaction.user_id == user_id)
+        select(func.count()).select_from(Transaction).where(Transaction.user_id == user_id)
     )
-    user_txns = result.scalars().all()
+    total_txn = result.scalar()
 
-    if len(user_txns) > 50:
+    if total_txn > 50:
         user.is_blocked = 1
         await db.commit()
 
-    # ✅ 11. Response
+    # 🔥 14. from datetime import datetime, timedelta
+from sqlalchemy import func
+
+# 🔥 conversions in last 10 minutes
+time_limit = datetime.utcnow() - timedelta(minutes=10)
+
+result = await db.execute(
+    select(func.count()).select_from(Transaction).where(
+        Transaction.user_id == user_id,
+        Transaction.created_at >= time_limit
+    )
+)
+
+recent_txn = result.scalar()
+
+if recent_txn > 10:
+    user.is_blocked = 1
+    await db.commit()
+    raise HTTPException(status_code=403, detail="Suspicious activity detected")
+
+    # ✅ 15. Response
     return {
         "status": "success",
         "credited": amount,

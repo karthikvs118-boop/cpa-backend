@@ -25,6 +25,9 @@ class Transaction(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     amount = Column(Float)
 
+    type = Column(String)  # credit / debit
+    tx_id = Column(String, unique=True, index=True)
+
     # 🔥 IMPORTANT FIELDS
     type = Column(String)  # credit / debit
     tx_id = Column(String, unique=True, index=True)  # CPA conversion ID
