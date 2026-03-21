@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.database import SessionLocal
@@ -15,8 +15,6 @@ router = APIRouter()
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise Exception("SECRET_KEY NOT SET ❌")
-
-print("SECRET_KEY LOADED:", SECRET_KEY)
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
@@ -39,9 +37,13 @@ async def get_db():
         yield session
 
 
-# 📝 REGISTER
+# 📝 REGISTER (ANTI-FRAUD ENABLED)
 @router.post("/register")
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(
+    user: UserCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
 
     email = user.email.strip().lower()
     password = user.password.strip()
@@ -49,7 +51,22 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     if not password:
         raise HTTPException(status_code=400, detail="Password cannot be empty")
 
-    # check if user exists
+    # 🔐 Get user IP
+    ip = request.client.host
+
+    # 🚫 LIMIT MULTIPLE ACCOUNTS FROM SAME IP
+    result = await db.execute(
+        select(User).where(User.ip_address == ip)
+    )
+    users_from_ip = result.scalars().all()
+
+    if len(users_from_ip) >= 3:
+        raise HTTPException(
+            status_code=403,
+            detail="Too many accounts from this IP"
+        )
+
+    # 🔍 Check if email already exists
     result = await db.execute(
         select(User).where(User.email == email)
     )
@@ -58,12 +75,14 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # hash password
+    # 🔐 Hash password
     hashed_password = pbkdf2_sha256.hash(password)
 
+    # ✅ Create user
     new_user = User(
         email=email,
-        password=hashed_password
+        password=hashed_password,
+        ip_address=ip  # 🔥 STORE IP
     )
 
     db.add(new_user)
@@ -72,14 +91,14 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     return {"message": "User registered successfully"}
 
 
-# 🔐 LOGIN
+# 🔐 LOGIN (WITH BLOCK CHECK)
 @router.post("/login")
 async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
 
     email = user.email.strip().lower()
     password = user.password.strip()
 
-    # fetch user
+    # 🔍 Fetch user
     result = await db.execute(
         select(User).where(User.email == email)
     )
@@ -88,13 +107,17 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
     if not db_user:
         raise HTTPException(status_code=400, detail="User not found")
 
-    # verify password
+    # 🚫 Check if user is blocked
+    if db_user.is_blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
+
+    # 🔐 Verify password
     if not pbkdf2_sha256.verify(password, db_user.password):
         raise HTTPException(status_code=400, detail="Wrong password")
 
-    # 🔥 CREATE TOKEN (CLEAN PAYLOAD)
+    # 🔥 CREATE TOKEN
     payload = {
-        "user_id": int(db_user.id),   # 🔥 MUST be int
+        "user_id": int(db_user.id),
         "exp": datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     }
 
