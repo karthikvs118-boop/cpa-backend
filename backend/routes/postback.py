@@ -7,8 +7,9 @@ import os
 
 router = APIRouter()
 
-# 🔐 Load secret from environment
+# 🔐 Load secret
 POSTBACK_SECRET = os.getenv("POSTBACK_SECRET")
+
 
 # 🗄️ DB Dependency
 async def get_db():
@@ -37,6 +38,10 @@ async def postback(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
+    # 🚫 Suspicious high payout protection
+    if amount > 1000:
+        raise HTTPException(status_code=400, detail="Suspicious amount")
+
     # 🔁 4. Prevent duplicate transactions
     result = await db.execute(
         select(Transaction).where(Transaction.tx_id == tx_id)
@@ -46,7 +51,7 @@ async def postback(
     if existing_tx:
         return {"status": "duplicate ignored"}
 
-    # 🔥 5. Verify sub_id from DB
+    # 🔥 5. Verify sub_id
     result = await db.execute(
         select(Click).where(Click.sub_id == sub_id)
     )
@@ -61,6 +66,10 @@ async def postback(
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # 🚫 Blocked user check
+    if user.is_blocked:
+        raise HTTPException(status_code=403, detail="User is blocked")
 
     # 💰 7. Credit balance
     user.balance += amount
@@ -79,7 +88,17 @@ async def postback(
     await db.commit()
     await db.refresh(user)
 
-    # ✅ 10. Response
+    # 🔥 10. AUTO FRAUD DETECTION (block if too many conversions)
+    result = await db.execute(
+        select(Transaction).where(Transaction.user_id == user_id)
+    )
+    user_txns = result.scalars().all()
+
+    if len(user_txns) > 50:
+        user.is_blocked = 1
+        await db.commit()
+
+    # ✅ 11. Response
     return {
         "status": "success",
         "credited": amount,
