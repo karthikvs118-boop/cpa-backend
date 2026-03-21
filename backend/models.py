@@ -12,9 +12,12 @@ class User(Base):
     password = Column(String)
     balance = Column(Float, default=0.0)
 
-    # 🔥 ANTI-FRAUD FIELDS
-    ip_address = Column(String)  # track registration IP
-    is_blocked = Column(Integer, default=0)  # 0 = active, 1 = blocked
+    # 🔥 ANTI-FRAUD
+    ip_address = Column(String)
+    is_blocked = Column(Integer, default=0)
+
+    # 🕒 tracking
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # 💰 TRANSACTION MODEL
@@ -28,9 +31,8 @@ class Transaction(Base):
     type = Column(String)  # credit / debit
     tx_id = Column(String, unique=True, index=True)
 
-    # 🔥 IMPORTANT FIELDS
-    type = Column(String)  # credit / debit
-    tx_id = Column(String, unique=True, index=True)  # CPA conversion ID
+    # 🔥 REQUIRED FOR FRAUD DETECTION
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # 💸 WITHDRAWAL MODEL
@@ -40,17 +42,21 @@ class Withdrawal(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     amount = Column(Float)
-    status = Column(String, default="pending")  # pending / approved / rejected
+    status = Column(String, default="pending")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
-# 🔥 CLICK MODEL (CORE + ANTI-FRAUD)
+# 🔥 CLICK MODEL
 class Click(Base):
     __tablename__ = "clicks"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))  # 🔗 linked to user
-    sub_id = Column(String, unique=True, index=True)  # unique tracking ID
+    user_id = Column(Integer, ForeignKey("users.id"))
+    sub_id = Column(String, unique=True, index=True)
 
-    # 🔥 NEW ANTI-FRAUD FIELDS
-    ip_address = Column(String)  # track click source
-    created_at = Column(DateTime, default=datetime.utcnow)  # time tracking
+    # 🔥 ANTI-FRAUD
+    ip_address = Column(String)
+
+    # 🕒 REQUIRED
+    created_at = Column(DateTime, default=datetime.utcnow)
