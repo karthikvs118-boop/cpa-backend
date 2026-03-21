@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from backend.database import SessionLocal
 from backend.models import User
 from pydantic import BaseModel, EmailStr
@@ -37,33 +37,53 @@ async def get_db():
         yield session
 
 
-# 📝 REGISTER (ANTI-FRAUD ENABLED)
+# 📝 REGISTER (SMART FRAUD DETECTION)
 @router.post("/register")
 async def register(
     user: UserCreate,
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-
     email = user.email.strip().lower()
     password = user.password.strip()
 
     if not password:
         raise HTTPException(status_code=400, detail="Password cannot be empty")
 
-    # 🔐 Get user IP
+    # 🔐 Get IP + DEVICE
     ip = request.client.host
+    device = request.headers.get("user-agent")
 
-    # 🚫 LIMIT MULTIPLE ACCOUNTS FROM SAME IP
+    # 📊 Count accounts from IP
     result = await db.execute(
-        select(User).where(User.ip_address == ip)
+        select(func.count()).select_from(User).where(User.ip_address == ip)
     )
-    users_from_ip = result.scalars().all()
+    ip_count = result.scalar()
 
-    if len(users_from_ip) >= 3:
+    # 📊 Count accounts from DEVICE
+    result = await db.execute(
+        select(func.count()).select_from(User).where(User.device == device)
+    )
+    device_count = result.scalar()
+
+    # 🚫 STRONG BLOCK (both high)
+    if ip_count >= 3 and device_count >= 2:
+        raise HTTPException(
+            status_code=403,
+            detail="Suspicious activity detected (IP + Device limit)"
+        )
+
+    # ⚠️ MEDIUM BLOCK (either too high)
+    if ip_count >= 5:
         raise HTTPException(
             status_code=403,
             detail="Too many accounts from this IP"
+        )
+
+    if device_count >= 3:
+        raise HTTPException(
+            status_code=403,
+            detail="Too many accounts from this device"
         )
 
     # 🔍 Check if email already exists
@@ -82,7 +102,8 @@ async def register(
     new_user = User(
         email=email,
         password=hashed_password,
-        ip_address=ip  # 🔥 STORE IP
+        ip_address=ip,
+        device=device
     )
 
     db.add(new_user)
@@ -91,10 +112,13 @@ async def register(
     return {"message": "User registered successfully"}
 
 
-# 🔐 LOGIN (WITH BLOCK CHECK)
+# 🔐 LOGIN (TRACK + SECURITY)
 @router.post("/login")
-async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
-
+async def login(
+    user: UserLogin,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
     email = user.email.strip().lower()
     password = user.password.strip()
 
@@ -107,7 +131,7 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
     if not db_user:
         raise HTTPException(status_code=400, detail="User not found")
 
-    # 🚫 Check if user is blocked
+    # 🚫 Blocked user
     if db_user.is_blocked:
         raise HTTPException(status_code=403, detail="Account is blocked")
 
@@ -115,7 +139,13 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
     if not pbkdf2_sha256.verify(password, db_user.password):
         raise HTTPException(status_code=400, detail="Wrong password")
 
-    # 🔥 CREATE TOKEN
+    # 🔄 Update tracking
+    db_user.ip_address = request.client.host
+    db_user.device = request.headers.get("user-agent")
+
+    await db.commit()
+
+    # 🔥 Create token
     payload = {
         "user_id": int(db_user.id),
         "exp": datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
