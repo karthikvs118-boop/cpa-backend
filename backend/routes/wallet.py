@@ -55,7 +55,7 @@ def generate_sub_id(user_id: int):
     return f"{user_id}_{uuid.uuid4().hex}"
 
 
-# 🔥 Generate CPA tracking link (RATE LIMITED + ANTI-FRAUD)
+# 🔥 Generate CPA tracking link
 @router.get("/generate-link")
 @limiter.limit("10/minute")
 async def generate_link(
@@ -75,7 +75,7 @@ async def generate_link(
     # 🔐 Get IP
     ip = request.client.host
 
-    # 🚀 FAST click count (NO full load)
+    # 🚀 FAST click count
     result = await db.execute(
         select(func.count()).select_from(Click).where(Click.user_id == user_id)
     )
@@ -98,9 +98,9 @@ async def generate_link(
     db.add(click)
     await db.commit()
 
-    # 🔗 CPA link
-    base_url = "https://example.cpagrip.com/offer123"
-    offer_link = f"{base_url}?subid={sub_id}"
+    # ✅ REAL CPA LINK (IMPORTANT 🔥)
+    base_url = "https://singingfiles.com/show.php?l=0&u=712357&id=70069&subid={subid}"
+    offer_link = base_url.replace("{subid}", sub_id)
 
     return {
         "sub_id": sub_id,
