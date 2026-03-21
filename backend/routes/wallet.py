@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
 from backend.models import User, Withdrawal, Click
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import select
 import uuid
 import os
 
@@ -13,8 +14,6 @@ router = APIRouter()
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise Exception("SECRET_KEY NOT SET ❌")
-
-print("SECRET_KEY LOADED:", SECRET_KEY)
 
 ALGORITHM = "HS256"
 
@@ -27,7 +26,7 @@ async def get_db():
         yield session
 
 
-# 🔐 Get current user from token
+# 🔐 Get current user
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
@@ -35,43 +34,64 @@ def get_current_user(
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-
-        # 🔍 DEBUG (VERY IMPORTANT)
-        print("DECODED PAYLOAD:", payload)
-
         user_id = payload.get("user_id")
 
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
+            raise HTTPException(status_code=401, detail="Invalid token")
 
         return int(user_id)
 
-    except JWTError as e:
-        print("JWT ERROR:", str(e))  # 🔍 DEBUG
+    except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-# 🔥 Generate strong sub_id
+# 🔥 Generate sub_id
 def generate_sub_id(user_id: int):
     return f"{user_id}_{uuid.uuid4().hex}"
 
 
-# 🔥 Generate CPA tracking link
+# 🔥 Generate CPA tracking link (ANTI-FRAUD ENABLED)
 @router.get("/generate-link")
 async def generate_link(
+    request: Request,
     user_id: int = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # 🔍 Check user
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 🚫 Blocked user check
+    if user.is_blocked:
+        raise HTTPException(status_code=403, detail="User is blocked")
+
+    # 🔐 Get IP
+    ip = request.client.host
+
+    # 🚫 Click spam protection (max 100 clicks)
+    result = await db.execute(
+        select(Click).where(Click.user_id == user_id)
+    )
+    clicks = result.scalars().all()
+
+    if len(clicks) >= 100:
+        raise HTTPException(status_code=403, detail="Too many clicks")
+
+    # 🔥 Generate sub_id
     sub_id = generate_sub_id(user_id)
 
+    # 💾 Save click
     click = Click(
         user_id=user_id,
-        sub_id=sub_id
+        sub_id=sub_id,
+        ip_address=ip
     )
 
     db.add(click)
     await db.commit()
 
+    # 🔗 CPA link
     base_url = "https://example.cpagrip.com/offer123"
     offer_link = f"{base_url}?subid={sub_id}"
 
@@ -107,6 +127,10 @@ async def request_withdrawal(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # 🚫 Blocked user
+    if user.is_blocked:
+        raise HTTPException(status_code=403, detail="User is blocked")
+
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
@@ -135,7 +159,7 @@ async def request_withdrawal(
     }
 
 
-# 👤 Get user profile
+# 👤 Get profile
 @router.get("/me")
 async def get_me(
     user_id: int = Depends(get_current_user),
