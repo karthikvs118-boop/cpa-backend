@@ -100,7 +100,9 @@ async def postback(
 
     # 🔥 13. TOTAL FRAUD CHECK (lifetime)
     result = await db.execute(
-        select(func.count()).select_from(Transaction).where(Transaction.user_id == user_id)
+        select(func.count()).select_from(Transaction).where(
+            Transaction.user_id == user_id
+        )
     )
     total_txn = result.scalar()
 
@@ -108,25 +110,25 @@ async def postback(
         user.is_blocked = 1
         await db.commit()
 
-    # 🔥 14. from datetime import datetime, timedelta
-from sqlalchemy import func
+    # 🔥 14. RAPID CONVERSION FRAUD (10 min window)
+    time_limit = datetime.utcnow() - timedelta(minutes=10)
 
-# 🔥 conversions in last 10 minutes
-time_limit = datetime.utcnow() - timedelta(minutes=10)
-
-result = await db.execute(
-    select(func.count()).select_from(Transaction).where(
-        Transaction.user_id == user_id,
-        Transaction.created_at >= time_limit
+    result = await db.execute(
+        select(func.count()).select_from(Transaction).where(
+            Transaction.user_id == user_id,
+            Transaction.created_at >= time_limit
+        )
     )
-)
 
-recent_txn = result.scalar()
+    recent_txn = result.scalar()
 
-if recent_txn > 10:
-    user.is_blocked = 1
-    await db.commit()
-    raise HTTPException(status_code=403, detail="Suspicious activity detected")
+    if recent_txn > 10:
+        user.is_blocked = 1
+        await db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="Suspicious activity detected"
+        )
 
     # ✅ 15. Response
     return {
