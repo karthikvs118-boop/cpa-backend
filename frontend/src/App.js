@@ -12,6 +12,7 @@ function App() {
     !!localStorage.getItem("token")
   );
 
+  // 🔐 Safe response handler
   const handleResponse = async (res) => {
     const text = await res.text();
     try {
@@ -21,6 +22,34 @@ function App() {
     }
   };
 
+  // 🆕 REGISTER
+  const register = async () => {
+    if (!email || !password) {
+      alert("Email and password required ⚠️");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await fetch(`${BASE_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await handleResponse(res);
+
+      alert(data.message || "Registered successfully ✅");
+
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔐 LOGIN
   const login = async () => {
     if (!email || !password) {
       alert("Email and password required ⚠️");
@@ -42,7 +71,7 @@ function App() {
         localStorage.setItem("token", data.access_token);
         setIsLoggedIn(true);
       } else {
-        alert(data.detail || "Login failed");
+        alert(data.detail || "Login failed ❌");
       }
 
     } catch (err) {
@@ -61,6 +90,7 @@ function App() {
     <div className="container">
       <div className="card">
         <h1>💰 Earn Money</h1>
+        <p className="subtitle">Complete tasks. Earn rewards.</p>
 
         <input
           type="email"
@@ -76,9 +106,15 @@ function App() {
           onChange={(e) => setPassword(e.target.value)}
         />
 
-        <button onClick={login} disabled={loading}>
-          {loading ? "Please wait..." : "Login"}
-        </button>
+        <div className="buttons">
+          <button onClick={register} disabled={loading}>
+            {loading ? "Please wait..." : "Register"}
+          </button>
+
+          <button className="login" onClick={login} disabled={loading}>
+            {loading ? "Please wait..." : "Login"}
+          </button>
+        </div>
       </div>
     </div>
   );

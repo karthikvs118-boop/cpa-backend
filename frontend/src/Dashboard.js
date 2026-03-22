@@ -18,54 +18,77 @@ function Dashboard({ setIsLoggedIn }) {
 
   // 💰 Get Balance
   const fetchBalance = async () => {
-    const res = await fetch(`${BASE_URL}/wallet/balance`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+    try {
+      const res = await fetch(`${BASE_URL}/wallet/balance`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
 
-    const data = await res.json();
-    setBalance(data.balance || 0);
+      const data = await res.json();
+      setBalance(data.balance || 0);
+
+    } catch (err) {
+      console.error("Balance error:", err);
+    }
   };
 
   // 🔗 Generate CPA Link
   const generateLink = async () => {
-    const res = await fetch(`${BASE_URL}/wallet/generate-link`, {
-      headers: {
-        Authorization: `Bearer ${token}`
+    try {
+      const res = await fetch(`${BASE_URL}/wallet/generate-link`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await res.json();
+
+      if (data.offer_link) {
+        setLink(data.offer_link);
+      } else {
+        alert(data.detail || "Error generating link");
       }
-    });
 
-    const data = await res.json();
-
-    if (data.link) {
-      setLink(data.link);
-    } else {
-      alert(data.detail || "Error generating link");
+    } catch (err) {
+      alert("Error generating link");
     }
   };
 
   // 📊 Get Transactions
   const fetchTransactions = async () => {
-    const res = await fetch(`${BASE_URL}/wallet/transactions`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+    try {
+      const res = await fetch(`${BASE_URL}/wallet/transactions`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
 
-    const data = await res.json();
-    setTransactions(data.transactions || []);
+      const data = await res.json();
+      setTransactions(data.transactions || []);
+
+    } catch (err) {
+      console.error("Transaction error:", err);
+    }
   };
 
-  // 🚀 Load on start
+  // 🚀 Load + auto refresh
   useEffect(() => {
     fetchBalance();
     fetchTransactions();
+
+    // 🔥 AUTO REFRESH (important for earnings)
+    const interval = setInterval(() => {
+      fetchBalance();
+      fetchTransactions();
+    }, 10000); // every 10 sec
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="dashboard">
-      
+
       {/* HEADER */}
       <div className="navbar">
         <h2>💰 Easy Earnings</h2>
@@ -86,7 +109,10 @@ function Dashboard({ setIsLoggedIn }) {
       {/* LINK DISPLAY */}
       {link && (
         <div className="offer">
-          <p>{link}</p>
+          <p>🔥 Complete this offer:</p>
+          <a href={link} target="_blank" rel="noreferrer">
+            <button>Start Earning 💰</button>
+          </a>
         </div>
       )}
 
