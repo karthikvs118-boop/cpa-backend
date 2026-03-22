@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: white;
+}
+
+.container {
+    padding: 20px;
+    max-width: 1200px;
+    margin: auto;
+}
+
+h1 {
+    font-size: 28px;
+    margin-bottom: 20px;
+}
+
+.top-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+input {
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    width: 250px;
+}
+
+button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.btn-primary { background: #3b82f6; color: white; }
+.btn-success { background: #22c55e; color: white; }
+.btn-danger { background: #ef4444; color: white; }
+.btn-warning { background: #f59e0b; color: white; }
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.stat-card h2 {
+    margin: 0;
+    font-size: 24px;
+}
+
+.stat-card p {
+    margin: 5px 0 0;
+    color: #94a3b8;
+}
+
+.card {
+    background: #1e293b;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    transition: 0.2s;
+}
+
+.card:hover {
+    transform: scale(1.01);
+}
+
+.actions {
+    margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🚀 Admin Dashboard</h1>
+
+<div class="top-bar">
+    <input id="adminKey" placeholder="Enter Admin Key" />
+    <button class="btn-primary" onclick="loadStats()">Load Stats</button>
+    <button class="btn-primary" onclick="loadWithdrawals()">Load Withdrawals</button>
+</div>
+
+<div class="stats">
+    <div class="stat-card">
+        <h2 id="users">0</h2>
+        <p>Users</p>
+    </div>
+    <div class="stat-card">
+        <h2 id="txns">0</h2>
+        <p>Transactions</p>
+    </div>
+    <div class="stat-card">
+        <h2 id="withdrawalsCount">0</h2>
+        <p>Withdrawals</p>
+    </div>
+</div>
+
+<div id="withdrawals"></div>
+
+</div>
+
+<script>
+const BASE_URL = "https://cpa-backend-k600.onrender.com";
+
+function getKey() {
+    return document.getElementById("adminKey").value;
+}
+
+// 📊 Load stats
+async function loadStats() {
+    const key = getKey();
+
+    const res = await fetch(`${BASE_URL}/admin/stats?admin_key=${key}`);
+    const data = await res.json();
+
+    document.getElementById("users").innerText = data.total_users;
+    document.getElementById("txns").innerText = data.total_transactions;
+    document.getElementById("withdrawalsCount").innerText = data.total_withdrawals;
+}
+
+// 💸 Load withdrawals
+async function loadWithdrawals() {
+    const key = getKey();
+
+    const res = await fetch(`${BASE_URL}/admin/withdrawals?admin_key=${key}`);
+    const data = await res.json();
+
+    const container = document.getElementById("withdrawals");
+    container.innerHTML = "";
+
+    data.forEach(w => {
+        const div = document.createElement("div");
+        div.className = "card";
+
+        div.innerHTML = `
+            <h3>₹${w.amount} — ${w.status}</h3>
+            <p>User ID: ${w.user_id}</p>
+            <p>Withdrawal ID: ${w.id}</p>
+
+            <div class="actions">
+                <button class="btn-success" onclick="approve(${w.id})">Approve</button>
+                <button class="btn-danger" onclick="reject(${w.id})">Reject</button>
+                <button class="btn-warning" onclick="blockUser(${w.user_id})">Block User</button>
+            </div>
+        `;
+
+        container.appendChild(div);
+    });
+}
+
+// ✅ Approve
+async function approve(id) {
+    const key = getKey();
+
+    await fetch(`${BASE_URL}/admin/approve?withdrawal_id=${id}&admin_key=${key}`, {
+        method: "POST"
+    });
+
+    alert("Approved ✅");
+    loadWithdrawals();
+}
+
+// ❌ Reject
+async function reject(id) {
+    const key = getKey();
+
+    await fetch(`${BASE_URL}/admin/reject?withdrawal_id=${id}&admin_key=${key}`, {
+        method: "POST"
+    });
+
+    alert("Rejected ❌");
+    loadWithdrawals();
+}
+
+// 🚫 Block user
+async function blockUser(user_id) {
+    const key = getKey();
+
+    await fetch(`${BASE_URL}/admin/block-user?user_id=${user_id}&admin_key=${key}`, {
+        method: "POST"
+    });
+
+    alert("User blocked 🚫");
+}
+</script>
+
+</body>
+</html>
