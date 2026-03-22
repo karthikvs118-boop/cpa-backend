@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import "./App.css";
 
 const BASE_URL = "https://cpa-backend-k600.onrender.com";
@@ -8,6 +8,13 @@ function Dashboard({ setIsLoggedIn }) {
   const [link, setLink] = useState("");
   const [transactions, setTransactions] = useState([]);
 
+  // 💸 Withdrawal state
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("upi");
+  const [account, setAccount] = useState("");
+
+  const [loading, setLoading] = useState(false);
+
   const token = localStorage.getItem("token");
 
   // 🔐 Logout
@@ -16,33 +23,54 @@ function Dashboard({ setIsLoggedIn }) {
     setIsLoggedIn(false);
   };
 
-  // 💰 Get Balance
-  const fetchBalance = async () => {
+  // 🔐 Safe response handler
+  const handleResponse = async (res) => {
+    const text = await res.text();
     try {
-      const res = await fetch(`${BASE_URL}/wallet/balance`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const data = await res.json();
-      setBalance(data.balance || 0);
-
-    } catch (err) {
-      console.error("Balance error:", err);
+      return JSON.parse(text);
+    } catch {
+      throw new Error(text);
     }
   };
 
-  // 🔗 Generate CPA Link
-  const generateLink = async () => {
+  // 💰 Get Balance (FIXED with useCallback ✅)
+  const fetchBalance = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE_URL}/wallet/generate-link`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      const res = await fetch(`${BASE_URL}/wallet/balance`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      const data = await res.json();
+      const data = await handleResponse(res);
+      setBalance(data.balance || 0);
+    } catch (err) {
+      console.error("Balance error:", err.message);
+    }
+  }, [token]);
+
+  // 📊 Transactions (FIXED ✅)
+  const fetchTransactions = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/wallet/transactions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const data = await handleResponse(res);
+      setTransactions(data.transactions || []);
+    } catch (err) {
+      console.error("Transaction error:", err.message);
+    }
+  }, [token]);
+
+  // 🔗 Generate Link
+  const generateLink = async () => {
+    try {
+      setLoading(true);
+
+      const res = await fetch(`${BASE_URL}/wallet/generate-link`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const data = await handleResponse(res);
 
       if (data.offer_link) {
         setLink(data.offer_link);
@@ -51,40 +79,71 @@ function Dashboard({ setIsLoggedIn }) {
       }
 
     } catch (err) {
-      alert("Error generating link");
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 📊 Get Transactions
-  const fetchTransactions = async () => {
+  // 💸 Withdraw
+  const withdraw = async () => {
+    if (!amount || !account) {
+      alert("Enter all details ⚠️");
+      return;
+    }
+
+    if (amount < 100) {
+      alert("Minimum withdrawal is ₹100 ⚠️");
+      return;
+    }
+
     try {
-      const res = await fetch(`${BASE_URL}/wallet/transactions`, {
+      setLoading(true);
+
+      const res = await fetch(`${BASE_URL}/wallet/withdraw`, {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          method,
+          account
+        })
       });
 
-      const data = await res.json();
-      setTransactions(data.transactions || []);
+      const data = await handleResponse(res);
+
+      alert(data.message || data.detail || "Request sent");
+
+      // reset form
+      setAmount("");
+      setAccount("");
+
+      // refresh data
+      fetchBalance();
+      fetchTransactions();
 
     } catch (err) {
-      console.error("Transaction error:", err);
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 🚀 Load + auto refresh
+  // 🔄 Auto refresh (NO WARNING NOW ✅)
   useEffect(() => {
     fetchBalance();
     fetchTransactions();
 
-    // 🔥 AUTO REFRESH (important for earnings)
     const interval = setInterval(() => {
       fetchBalance();
       fetchTransactions();
-    }, 10000); // every 10 sec
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchBalance, fetchTransactions]);
 
   return (
     <div className="dashboard">
@@ -101,20 +160,50 @@ function Dashboard({ setIsLoggedIn }) {
         <h1>₹{balance}</h1>
       </div>
 
-      {/* ACTIONS */}
+      {/* ACTION */}
       <div className="actions">
-        <button onClick={generateLink}>🎯 Generate Link</button>
+        <button onClick={generateLink} disabled={loading}>
+          {loading ? "Please wait..." : "🎯 Generate Link"}
+        </button>
       </div>
 
-      {/* LINK DISPLAY */}
+      {/* LINK */}
       {link && (
         <div className="offer">
-          <p>🔥 Complete this offer:</p>
           <a href={link} target="_blank" rel="noreferrer">
             <button>Start Earning 💰</button>
           </a>
         </div>
       )}
+
+      {/* 💸 WITHDRAW */}
+      <div className="withdraw-box">
+        <h3>💸 Withdraw</h3>
+
+        <input
+          type="number"
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+
+        <select value={method} onChange={(e) => setMethod(e.target.value)}>
+          <option value="upi">UPI</option>
+          <option value="paytm">Paytm</option>
+          <option value="bank">Bank</option>
+        </select>
+
+        <input
+          type="text"
+          placeholder="UPI ID / Account"
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+        />
+
+        <button onClick={withdraw} disabled={loading}>
+          {loading ? "Processing..." : "Withdraw"}
+        </button>
+      </div>
 
       {/* TRANSACTIONS */}
       <div className="offers">

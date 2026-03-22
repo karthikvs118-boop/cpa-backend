@@ -5,9 +5,10 @@ from backend.database import SessionLocal
 from backend.models import Withdrawal, User, Transaction
 import os
 
-router = APIRouter()
+# ✅ IMPORTANT: prefix added
+router = APIRouter(prefix="/admin")
 
-# 🔐 Admin key from ENV
+# 🔐 Admin key
 ADMIN_KEY = os.getenv("ADMIN_KEY")
 
 
@@ -23,7 +24,7 @@ def verify_admin(admin_key: str):
         raise HTTPException(status_code=403, detail="Not authorized")
 
 
-# 📊 DASHBOARD STATS
+# 📊 STATS
 @router.get("/stats")
 async def get_stats(admin_key: str, db: AsyncSession = Depends(get_db)):
     verify_admin(admin_key)
@@ -39,18 +40,30 @@ async def get_stats(admin_key: str, db: AsyncSession = Depends(get_db)):
     }
 
 
-# 📋 GET ALL WITHDRAWALS
+# 📋 WITHDRAWALS (FIXED JSON)
 @router.get("/withdrawals")
 async def get_withdrawals(admin_key: str, db: AsyncSession = Depends(get_db)):
     verify_admin(admin_key)
 
-    result = await db.execute(select(Withdrawal))
+    result = await db.execute(
+        select(Withdrawal).order_by(Withdrawal.id.desc())
+    )
     withdrawals = result.scalars().all()
 
-    return withdrawals
+    return [
+        {
+            "id": w.id,
+            "user_id": w.user_id,
+            "amount": w.amount,
+            "method": w.method,
+            "account": w.account,
+            "status": w.status
+        }
+        for w in withdrawals
+    ]
 
 
-# ✅ APPROVE WITHDRAWAL
+# ✅ APPROVE
 @router.post("/approve")
 async def approve_withdrawal(
     withdrawal_id: int,
@@ -68,13 +81,12 @@ async def approve_withdrawal(
         raise HTTPException(status_code=400, detail="Already processed")
 
     withdrawal.status = "approved"
-
     await db.commit()
 
-    return {"message": "Withdrawal approved ✅"}
+    return {"message": "Approved ✅"}
 
 
-# ❌ REJECT WITHDRAWAL
+# ❌ REJECT + REFUND
 @router.post("/reject")
 async def reject_withdrawal(
     withdrawal_id: int,
@@ -91,15 +103,16 @@ async def reject_withdrawal(
     if withdrawal.status != "pending":
         raise HTTPException(status_code=400, detail="Already processed")
 
-    # 💰 Refund user
     user = await db.get(User, withdrawal.user_id)
-    user.balance += withdrawal.amount
+
+    if user:
+        user.balance += withdrawal.amount
 
     withdrawal.status = "rejected"
 
     await db.commit()
 
-    return {"message": "Withdrawal rejected & refunded"}
+    return {"message": "Rejected & refunded 💸"}
 
 
 # 🚫 BLOCK USER
@@ -117,7 +130,6 @@ async def block_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.is_blocked = True
-
     await db.commit()
 
     return {"message": "User blocked 🚫"}
@@ -138,7 +150,6 @@ async def unblock_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.is_blocked = False
-
     await db.commit()
 
     return {"message": "User unblocked ✅"}
