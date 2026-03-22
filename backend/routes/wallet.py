@@ -88,7 +88,7 @@ async def generate_link(
     if recent_clicks > 20:
         raise HTTPException(status_code=403, detail="Too many clicks (cooldown)")
 
-    # 🚫 IP abuse protection
+    # 🚫 IP abuse
     result = await db.execute(
         select(func.count()).select_from(Click).where(Click.ip_address == ip)
     )
@@ -109,7 +109,7 @@ async def generate_link(
     db.add(click)
     await db.commit()
 
-    # ✅ CPA LINK (replace with your offer anytime)
+    # ✅ CPA LINK
     base_url = "https://singingfiles.com/show.php?l=0&u=712357&id=70069&subid={subid}"
     offer_link = base_url.replace("{subid}", sub_id)
 
@@ -133,7 +133,30 @@ async def get_balance(
     return {"balance": user.balance}
 
 
-# 💸 Withdrawal system (SMART AUTO + FRAUD SAFE)
+# 📊 Get transactions (ADDED FOR FRONTEND)
+@router.get("/transactions")
+async def get_transactions(
+    user_id: int = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Transaction).where(Transaction.user_id == user_id)
+    )
+
+    txns = result.scalars().all()
+
+    return {
+        "transactions": [
+            {
+                "amount": t.amount,
+                "type": t.type
+            }
+            for t in txns
+        ]
+    }
+
+
+# 💸 Withdrawal system
 @router.post("/withdraw")
 async def request_withdrawal(
     amount: float,
@@ -160,14 +183,13 @@ async def request_withdrawal(
     if user.balance < amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    # 💳 Validate method
     if method not in ["upi", "paytm", "bank"]:
         raise HTTPException(status_code=400, detail="Invalid method")
 
     if not account:
         raise HTTPException(status_code=400, detail="Account required")
 
-    # ⏱️ Cooldown (1 hour)
+    # ⏱️ Cooldown
     result = await db.execute(
         select(Withdrawal)
         .where(Withdrawal.user_id == user_id)
@@ -179,13 +201,12 @@ async def request_withdrawal(
         if last_withdrawal.created_at > datetime.utcnow() - timedelta(hours=1):
             raise HTTPException(status_code=400, detail="Wait before next withdrawal")
 
-    # 📊 Total transactions (trust)
+    # 📊 Trust system
     result = await db.execute(
         select(func.count()).select_from(Transaction).where(Transaction.user_id == user_id)
     )
     txn_count = result.scalar()
 
-    # 🚨 Recent transactions (10 min)
     time_limit = datetime.utcnow() - timedelta(minutes=10)
 
     result = await db.execute(
@@ -198,19 +219,13 @@ async def request_withdrawal(
 
     auto_approve = False
 
-    # 🚫 suspicious burst
     if recent_txn > 5:
         auto_approve = False
-
-    # ✅ trusted user
     elif txn_count >= 10:
         auto_approve = True
-
-    # ⚠️ mid user
     elif txn_count >= 3 and amount <= 200:
         auto_approve = True
 
-    # 🚨 large withdrawal always manual
     if amount > 500:
         auto_approve = False
 
@@ -231,13 +246,11 @@ async def request_withdrawal(
 
     return {
         "message": "Withdrawal auto-approved ✅" if auto_approve else "Withdrawal pending ⏳",
-        "method": method,
-        "account": account,
         "remaining_balance": user.balance
     }
 
 
-# 👤 Profile
+# 👤 Profile (FIXED BUG)
 @router.get("/me")
 async def get_me(
     user_id: int = Depends(get_current_user),
