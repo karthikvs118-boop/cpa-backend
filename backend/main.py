@@ -31,7 +31,7 @@ app.add_middleware(SlowAPIMiddleware)
 # ✅ CORS (⚠️ restrict in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # change later to frontend domain
+    allow_origins=["https://easyearningapp.netlify.app"],  # change later to frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

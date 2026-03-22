@@ -1,128 +1,113 @@
 import { useState } from "react";
 
-const API = "http://127.0.0.1:8000";
+const BASE_URL = "https://cpa-backend-k600.onrender.com";
 
 function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
   const [balance, setBalance] = useState(0);
-  const [userId, setUserId] = useState(0);
+  const [taskLink, setTaskLink] = useState("");
 
-  // 🔐 Register
   const register = async () => {
-    await fetch(`${API}/auth/register`, {
+    await fetch(`${BASE_URL}/auth/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ email, password })
     });
-    alert("Registered successfully!");
+    alert("Registered ✅");
   };
 
-  // 🔐 Login
   const login = async () => {
-    const res = await fetch(`${API}/auth/login`, {
+    const res = await fetch(`${BASE_URL}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ email, password })
     });
 
     const data = await res.json();
     setToken(data.access_token);
-
-    getUser(data.access_token);
     getBalance(data.access_token);
   };
 
-  // 👤 Get user info
-  const getUser = async (tk) => {
-    const res = await fetch(`${API}/wallet/me`, {
-      headers: { Authorization: "Bearer " + tk }
+  const getBalance = async (tok = token) => {
+    const res = await fetch(`${BASE_URL}/wallet/balance`, {
+      headers: { Authorization: "Bearer " + tok }
     });
-
-    const data = await res.json();
-    setUserId(data.user_id);
-  };
-
-  // 💰 Get balance
-  const getBalance = async (tk) => {
-    const res = await fetch(`${API}/wallet/balance`, {
-      headers: { Authorization: "Bearer " + tk }
-    });
-
     const data = await res.json();
     setBalance(data.balance);
   };
 
-  // 🎯 REAL CPA EARN (UPDATED)
-  const earn = () => {
-    window.open(
-      `https://singingfiles.com/show.php?l=0&u=712357&id=70069&subid=${userId}`
-    );
+  const getTask = async () => {
+    const res = await fetch(`${BASE_URL}/wallet/generate-link`, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    const data = await res.json();
+    setTaskLink(data.offer_link);
   };
 
-  // 💸 Withdraw
- const withdraw = async () => {
-  const res = await fetch(`${API}/wallet/withdraw?amount=100`, {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token }
-  });
+  const withdraw = async () => {
+    const amount = prompt("Enter amount");
 
-  const data = await res.json();
+    await fetch(`${BASE_URL}/wallet/withdraw?amount=${amount}`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token }
+    });
 
-  if (res.ok) {
-    alert("Withdrawal requested!");
-  } else {
-    alert(data.detail);
-  }
-
-  getBalance(token);
-};
+    alert("Withdrawal requested 💸");
+    getBalance();
+  };
 
   return (
-    <div style={container}>
-      <div style={card}>
-        <h1 style={{ marginBottom: "20px" }}>💰 Earn App</h1>
+    <div style={styles.container}>
+      <div style={styles.card}>
+
+        <h1 style={styles.title}>💰 Earn Money</h1>
 
         {!token ? (
           <>
             <input
+              style={styles.input}
               placeholder="Email"
               onChange={(e) => setEmail(e.target.value)}
-              style={input}
             />
 
             <input
+              style={styles.input}
               type="password"
               placeholder="Password"
               onChange={(e) => setPassword(e.target.value)}
-              style={input}
             />
 
-            <button style={btnPrimary} onClick={register}>
+            <button style={styles.primaryBtn} onClick={register}>
               Register
             </button>
 
-            <button style={btnSecondary} onClick={login}>
+            <button style={styles.secondaryBtn} onClick={login}>
               Login
             </button>
           </>
         ) : (
           <>
-            <h2 style={balanceText}>₹{balance}</h2>
-            <p style={{ color: "#777" }}>Available Balance</p>
+            <h2 style={styles.balance}>₹{balance}</h2>
 
-            <button style={btnPrimary} onClick={earn}>
-              Earn ₹50
+            <button style={styles.primaryBtn} onClick={getTask}>
+              🎯 Get Task
             </button>
 
-            <button 
-  style={btnDanger} 
-  onClick={withdraw}
-  disabled={balance < 100}
->
-  {balance >= 100 ? "Withdraw ₹100" : "Minimum ₹100 required"}
-</button>
+            <button style={styles.secondaryBtn} onClick={getBalance}>
+              🔄 Refresh
+            </button>
+
+            {taskLink && (
+              <a href={taskLink} target="_blank" rel="noreferrer">
+                <button style={styles.taskBtn}>🚀 Start Task</button>
+              </a>
+            )}
+
+            <button style={styles.withdrawBtn} onClick={withdraw}>
+              💸 Withdraw
+            </button>
           </>
         )}
       </div>
@@ -130,58 +115,79 @@ function App() {
   );
 }
 
-// 🎨 Styles
-
-const container = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  height: "100vh",
-  background: "#f4f6f9"
-};
-
-const card = {
-  background: "white",
-  padding: "30px",
-  borderRadius: "12px",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
-  width: "320px",
-  textAlign: "center"
-};
-
-const input = {
-  width: "100%",
-  padding: "10px",
-  margin: "10px 0",
-  borderRadius: "6px",
-  border: "1px solid #ccc"
-};
-
-const btnPrimary = {
-  width: "100%",
-  padding: "10px",
-  margin: "10px 0",
-  background: "#3498db",
-  color: "white",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer"
-};
-
-const btnSecondary = {
-  ...btnPrimary,
-  background: "#2ecc71"
-};
-
-const btnDanger = {
-  ...btnPrimary,
-  background: "#e74c3c"
-};
-
-const balanceText = {
-  color: "#2ecc71",
-  fontSize: "28px",
-  margin: "10px 0"
+const styles = {
+  container: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    height: "100vh",
+    background: "linear-gradient(135deg, #0f172a, #1e293b)"
+  },
+  card: {
+    background: "#1e293b",
+    padding: "30px",
+    borderRadius: "15px",
+    width: "320px",
+    textAlign: "center",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
+  },
+  title: {
+    marginBottom: "20px"
+  },
+  input: {
+    width: "100%",
+    padding: "12px",
+    marginBottom: "10px",
+    borderRadius: "8px",
+    border: "none",
+    outline: "none"
+  },
+  primaryBtn: {
+    width: "100%",
+    padding: "12px",
+    marginTop: "10px",
+    borderRadius: "8px",
+    border: "none",
+    background: "#22c55e",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer"
+  },
+  secondaryBtn: {
+    width: "100%",
+    padding: "12px",
+    marginTop: "10px",
+    borderRadius: "8px",
+    border: "none",
+    background: "#334155",
+    color: "white",
+    cursor: "pointer"
+  },
+  taskBtn: {
+    width: "100%",
+    padding: "12px",
+    marginTop: "15px",
+    borderRadius: "8px",
+    border: "none",
+    background: "#3b82f6",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer"
+  },
+  withdrawBtn: {
+    width: "100%",
+    padding: "12px",
+    marginTop: "15px",
+    borderRadius: "8px",
+    border: "none",
+    background: "#ef4444",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer"
+  },
+  balance: {
+    marginBottom: "15px"
+  }
 };
 
 export default App;
